@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "name": "PhoneStats",
+    "slug": "PhoneStats",
+    "version": "1.0.0",
+    "extra": {
+      "eas": {
+        "projectId": "a7c8ab7e-12ef-44c5-a6bb-4650b6e4689a"
+      }
+    }
+  }
+}
