@@ -1,18 +1,25 @@
 import React, { useState, useEffect } from 'react';
-import { ScrollView, StyleSheet, useColorScheme, View, Text, Button, ActivityIndicator } from 'react-native';
+import { ScrollView, StyleSheet, useColorScheme, View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Card, ListItem } from 'react-native-elements';
 import * as Device from 'expo-device';
-import * as Application from 'expo-application';
-import * as Cellular from 'expo-cellular';
-import * as Network from 'expo-network';
-import * as Updates from 'expo-updates';
+import { checkDeviceStatus } from './deviceChecks';
+
+const ListItemTitle = ({ children, style }) => {
+  return <Text style={style}>{children}</Text>;
+};
+
+const ListItemSubtitle = ({ children, style }) => {
+  return <Text style={style}>{children}</Text>;
+};
 
 export default function App() {
   const [emulatorExpanded, setEmulatorExpanded] = useState(false);
   const [rootExpanded, setRootExpanded] = useState(false);
   const [devModeExpanded, setDevModeExpanded] = useState(false);
   const [passCount, setPassCount] = useState(0);
+  const [totalChecks, setTotalChecks] = useState(3);
+  const [loading, setLoading] = useState(true);
 
   const [isEmulator, setIsEmulator] = useState(null);
   const [isRooted, setIsRooted] = useState(null);
@@ -23,141 +30,29 @@ export default function App() {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
 
+  const loadDeviceStatus = async () => {
+    setLoading(true);
+    const { isRooted, rootDetails, isEmulator, emulatorDetails, isDevMode } = await checkDeviceStatus();
+    setIsRooted(isRooted);
+    setRootDetails(rootDetails);
+    setIsEmulator(isEmulator);
+    setEmulatorDetails(emulatorDetails);
+    setIsDevMode(isDevMode);
+
+    const checks = Device.osName === 'iOS' ? 2 : 3;
+    setTotalChecks(checks);
+
+    const count = [isEmulator, isRooted, Device.osName !== 'iOS' ? isDevMode : null].filter(status => status === false).length;
+    setPassCount(count);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const checkDeviceStatus = async () => {
-      const rootReasons = [];
-      const emulatorReasons = [];
-
-      // 조건 1: 루팅/탈옥 확인
-      try {
-        let rooted = await Device.isRootedExperimentalAsync();
-
-        if (rooted == null) {
-          rooted = false;
-        }
-
-        if (rooted) {
-          rootReasons.push('Root/Jailbreak status detected via Device API.');
-        }
-
-        const rootApps = [
-          'com.topjohnwu.magisk',
-          'eu.chainfire.supersu',
-          'com.koushikdutta.superuser',
-          'com.noshufou.android.su',
-          'com.thirdparty.superuser',
-          'com.yellowes.su'
-        ];
-
-        const installedRootApps = await Promise.all(rootApps.map(async (app) => {
-          try {
-            const isInstalled = await Application.getInstallReferrerAsync({ packageName: app });
-            return isInstalled !== null;
-          } catch (error) {
-            return false;
-          }
-        }));
-
-        if (installedRootApps.includes(true)) {
-          rootReasons.push('Presence of known root apps.');
-        }
-
-        if (rootReasons.length > 0) {
-          setIsRooted(true);
-          setRootDetails(rootReasons);
-        } else {
-          setIsRooted(false);
-        }
-      } catch (error) {
-        setIsRooted(true);
-        rootReasons.push('Error occurred while checking root status.');
-        setRootDetails(rootReasons);
-      }
-
-      // 조건 2: 에뮬레이터 여부 확인
-      try {
-        const architecture = Device.architecture || '';
-        const serial = Device.serial || '';
-
-        const ipAddress = await Network.getIpAddressAsync();
-        const isAndroidEmulator = Device.deviceType === Device.DeviceType.DESKTOP || architecture.includes('x86') || architecture.includes('i686') || Device.modelName.startsWith('sdk') || serial.startsWith('EMULATOR') || ipAddress === '10.0.2.15';
-
-        if (Device.deviceType === Device.DeviceType.DESKTOP) {
-          emulatorReasons.push('Device type is DESKTOP.');
-        }
-        if (architecture.includes('x86') || architecture.includes('i686')) {
-          emulatorReasons.push(`Architecture is ${architecture}.`);
-        }
-        if (Device.modelName.startsWith('sdk')) {
-          emulatorReasons.push('Model name starts with sdk.');
-        }
-        if (serial.startsWith('EMULATOR')) {
-          emulatorReasons.push('Serial starts with EMULATOR.');
-        }
-        if (ipAddress === '10.0.2.15') {
-          emulatorReasons.push('IP address is 10.0.2.15.');
-        }
-
-        const emulatorApps = [
-          'com.google.android.launcher.layouts.genymotion',
-          'com.bluestacks',
-          'com.bignox.app',
-          'com.vphone.launcher',
-          'com.microvirt.tools',
-          'com.microvirt.download',
-          'com.cyanogenmod.filemanager',
-          'com.mumu.store'
-        ];
-
-        const installedEmulatorApps = await Promise.all(emulatorApps.map(async (app) => {
-          try {
-            const isInstalled = await Application.getInstallReferrerAsync({ packageName: app });
-            return isInstalled !== null;
-          } catch (error) {
-            return false;
-          }
-        }));
-
-        if (installedEmulatorApps.includes(true)) {
-          emulatorReasons.push('Presence of known emulator apps.');
-        }
-
-        let isIOSEmulator = false;
-        if (Device.osName === 'iOS') {
-          const carrierName = await Cellular.getCarrierNameAsync();
-          isIOSEmulator = carrierName && carrierName.includes('Appetize.io');
-          if (isIOSEmulator) {
-            emulatorReasons.push('Carrier name includes Appetize.io.');
-          }
-        }
-
-        if (isAndroidEmulator || isIOSEmulator) {
-          setIsEmulator(true);
-          setEmulatorDetails(emulatorReasons);
-        } else {
-          setIsEmulator(false);
-        }
-      } catch (error) {
-        setIsEmulator(true);
-        emulatorReasons.push('Error occurred while checking emulator status.');
-        setEmulatorDetails(emulatorReasons);
-      }
-
-      // 조건 3: 개발자 모드 여부 확인
-      const devMode = __DEV__;
-      setIsDevMode(devMode);
-    };
-
-    checkDeviceStatus();
+    loadDeviceStatus();
   }, []);
 
-  useEffect(() => {
-    const count = [isEmulator, isRooted, isDevMode].filter(status => status === false).length;
-    setPassCount(count);
-  }, [isEmulator, isRooted, isDevMode]);
-
   const handleReload = () => {
-    Updates.reloadAsync();
+    loadDeviceStatus();
   };
 
   return (
@@ -168,133 +63,125 @@ export default function App() {
             <Text style={[styles.headerText, isDarkMode && styles.headerTextDark]}>
               Device Information
             </Text>
-            <Text style={[styles.subHeaderText, isDarkMode && styles.headerTextDark]}>
-              {isEmulator === null || isRooted === null || isDevMode === null ? " Checking..." : `${passCount}/3 items passed`}
+            <Text style={[styles.subHeaderText, isDarkMode && styles.subHeaderTextDark]}>
+              {loading ? " Checking..." : `${passCount}/${totalChecks} items passed`}
             </Text>
           </View>
 
-          <Card containerStyle={[styles.card, isDarkMode && styles.cardDark]}>
-            <ListItem.Accordion
-              content={
-                <ListItem.Content>
-                  <ListItem.Title>Is Emulator: {isEmulator === null ? " Checking..." : isEmulator ? "Yes" : "No"}</ListItem.Title>
-                </ListItem.Content>
-              }
-              isExpanded={emulatorExpanded}
-              onPress={() => setEmulatorExpanded(!emulatorExpanded)}
-              containerStyle={styles.accordion}
-            >
-              {emulatorExpanded && (
-                <>
-                  {isEmulator === null ? (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color="#0000ff" />
-                      <Text> Checking...</Text>
-                    </View>
-                  ) : (
+          {loading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#007bff" />
+            </View>
+          ) : (
+            <>
+              <Card containerStyle={[styles.card, isDarkMode && styles.cardDark]}>
+                <ListItem.Accordion
+                  content={
+                    <ListItem.Content>
+                      <ListItemTitle style={isDarkMode ? styles.titleTextDark : styles.titleText}>
+                        Is Emulator: {isEmulator === null ? " Checking..." : isEmulator ? "Yes" : "No"}
+                      </ListItemTitle>
+                    </ListItem.Content>
+                  }
+                  isExpanded={emulatorExpanded}
+                  onPress={() => setEmulatorExpanded(!emulatorExpanded)}
+                  containerStyle={[styles.accordion, isDarkMode && styles.accordionDark]}
+                >
+                  {emulatorExpanded && (
                     <>
                       <ListItem>
                         <ListItem.Content>
-                          <ListItem.Subtitle>
+                          <ListItemSubtitle style={isDarkMode ? styles.detailTextDark : styles.detailText}>
                             This device is {isEmulator ? "" : "not "}an emulator.
-                          </ListItem.Subtitle>
+                          </ListItemSubtitle>
                         </ListItem.Content>
                       </ListItem>
                       {emulatorDetails.map((detail, index) => (
                         <ListItem key={index} containerStyle={styles.detailItem}>
                           <ListItem.Content>
-                            <ListItem.Subtitle style={styles.detailText}>
+                            <ListItemSubtitle style={isDarkMode ? styles.detailTextDark : styles.detailText}>
                               {detail}
-                            </ListItem.Subtitle>
+                            </ListItemSubtitle>
                           </ListItem.Content>
                         </ListItem>
                       ))}
                     </>
                   )}
-                </>
-              )}
-            </ListItem.Accordion>
-          </Card>
+                </ListItem.Accordion>
+              </Card>
 
-          <Card containerStyle={[styles.card, isDarkMode && styles.cardDark]}>
-            <ListItem.Accordion
-              content={
-                <ListItem.Content>
-                  <ListItem.Title>Is {Device.osName === 'iOS' ? 'Jailbreak' : 'Rooted'}: {isRooted === null ? " Checking..." : isRooted ? "Yes" : "No"}</ListItem.Title>
-                </ListItem.Content>
-              }
-              isExpanded={rootExpanded}
-              onPress={() => setRootExpanded(!rootExpanded)}
-              containerStyle={styles.accordion}
-            >
-              {rootExpanded && (
-                <>
-                  {isRooted === null ? (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color="#0000ff" />
-                      <Text> Checking...</Text>
-                    </View>
-                  ) : (
+              <Card containerStyle={[styles.card, isDarkMode && styles.cardDark]}>
+                <ListItem.Accordion
+                  content={
+                    <ListItem.Content>
+                      <ListItemTitle style={isDarkMode ? styles.titleTextDark : styles.titleText}>
+                        Is {Device.osName === 'iOS' ? 'Jailbreak' : 'Rooted'}: {isRooted === null ? " Checking..." : isRooted ? "Yes" : "No"}
+                      </ListItemTitle>
+                    </ListItem.Content>
+                  }
+                  isExpanded={rootExpanded}
+                  onPress={() => setRootExpanded(!rootExpanded)}
+                  containerStyle={[styles.accordion, isDarkMode && styles.accordionDark]}
+                >
+                  {rootExpanded && (
                     <>
                       <ListItem>
                         <ListItem.Content>
-                          <ListItem.Subtitle>
+                          <ListItemSubtitle style={isDarkMode ? styles.detailTextDark : styles.detailText}>
                             {Device.osName === 'iOS' ? 'This device is not jailbroken.' : 'This device is not rooted.'}
-                          </ListItem.Subtitle>
+                          </ListItemSubtitle>
                         </ListItem.Content>
                       </ListItem>
                       {rootDetails.map((detail, index) => (
                         <ListItem key={index} containerStyle={styles.detailItem}>
                           <ListItem.Content>
-                            <ListItem.Subtitle style={styles.detailText}>
+                            <ListItemSubtitle style={isDarkMode ? styles.detailTextDark : styles.detailText}>
                               {detail}
-                            </ListItem.Subtitle>
+                            </ListItemSubtitle>
                           </ListItem.Content>
                         </ListItem>
                       ))}
                     </>
                   )}
-                </>
-              )}
-            </ListItem.Accordion>
-          </Card>
+                </ListItem.Accordion>
+              </Card>
 
-          <Card containerStyle={[styles.card, isDarkMode && styles.cardDark]}>
-            <ListItem.Accordion
-              content={
-                <ListItem.Content>
-                  <ListItem.Title>Is Developer Mode: {isDevMode === null ? " Checking..." : isDevMode ? "Yes" : "No"}</ListItem.Title>
-                </ListItem.Content>
-              }
-              isExpanded={devModeExpanded}
-              onPress={() => setDevModeExpanded(!devModeExpanded)}
-              containerStyle={styles.accordion}
-            >
-              {devModeExpanded && (
-                <>
-                  {isDevMode === null ? (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color="#0000ff" />
-                      <Text> Checking...</Text>
-                    </View>
-                  ) : (
-                    <ListItem>
+              {Device.osName !== 'iOS' && (
+                <Card containerStyle={[styles.card, isDarkMode && styles.cardDark]}>
+                  <ListItem.Accordion
+                    content={
                       <ListItem.Content>
-                        <ListItem.Subtitle>
-                          Developer mode is {isDevMode ? "enabled" : "disabled"} on this device.
-                        </ListItem.Subtitle>
+                        <ListItemTitle style={isDarkMode ? styles.titleTextDark : styles.titleText}>
+                          Is Developer Mode: {isDevMode === null ? " Checking..." : isDevMode ? "Yes" : "No"}
+                        </ListItemTitle>
                       </ListItem.Content>
-                    </ListItem>
-                  )}
-                </>
+                    }
+                    isExpanded={devModeExpanded}
+                    onPress={() => setDevModeExpanded(!devModeExpanded)}
+                    containerStyle={[styles.accordion, isDarkMode && styles.accordionDark]}
+                  >
+                    {devModeExpanded && (
+                      <>
+                        <ListItem>
+                          <ListItem.Content>
+                            <ListItemSubtitle style={isDarkMode ? styles.detailTextDark : styles.detailText}>
+                              Developer mode is {isDevMode ? "enabled" : "disabled"} on this device.
+                            </ListItemSubtitle>
+                          </ListItem.Content>
+                        </ListItem>
+                      </>
+                    )}
+                  </ListItem.Accordion>
+                </Card>
               )}
-            </ListItem.Accordion>
-          </Card>
+            </>
+          )}
 
           <View style={[styles.buttonContainer, styles.buttonContainerPadding]}>
-            <Button title="Recheck" onPress={handleReload} />
+            <TouchableOpacity style={styles.button} onPress={handleReload}>
+              <Text style={styles.buttonText}>Recheck</Text>
+            </TouchableOpacity>
           </View>
-
         </ScrollView>
       </SafeAreaView>
     </SafeAreaProvider>
@@ -331,6 +218,9 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#555',
   },
+  subHeaderTextDark: {
+    color: '#aaa',
+  },
   card: {
     width: '100%',
     marginVertical: 10,
@@ -338,13 +228,16 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: 0,
     backgroundColor: '#fff',
-    paddingBottom: 20, // Add paddingBottom here
+    paddingBottom: 20,
   },
   cardDark: {
     backgroundColor: '#333',
   },
   accordion: {
     backgroundColor: 'transparent',
+  },
+  accordionDark: {
+    backgroundColor: '#444',
   },
   detailItem: {
     backgroundColor: 'transparent',
@@ -353,20 +246,40 @@ const styles = StyleSheet.create({
   },
   detailText: {
     fontSize: 14,
+    color: '#333',
+  },
+  detailTextDark: {
+    color: '#ccc',
   },
   buttonContainer: {
     marginTop: 20,
     width: '100%',
     paddingHorizontal: 20,
-    paddingBottom: 20, // Add paddingBottom here
   },
   buttonContainerPadding: {
     paddingBottom: 20,
   },
-  loadingContainer: {
-    flexDirection: 'row',
+  button: {
+    backgroundColor: '#007bff',
+    borderRadius: 5,
+    paddingVertical: 15,
     alignItems: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
     padding: 10,
+  },
+  titleText: {
+    color: '#333',
+  },
+  titleTextDark: {
+    color: '#ccc',
   },
 });
