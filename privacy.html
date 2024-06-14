@@ -138,13 +138,13 @@ PhoneStats(이하 '본 앱'이라 함)는 사용자의 개인정보를 중요시
         function setContent(language) {
             const contentElement = document.getElementById('content');
             if (language === 'ko') {
-                contentElement.innerHTML = marked(privacyPolicyKo);
+                contentElement.innerHTML = marked.parse(privacyPolicyKo);
                 document.getElementById('btn-ko').classList.remove('btn-secondary');
                 document.getElementById('btn-ko').classList.add('btn-primary');
                 document.getElementById('btn-en').classList.remove('btn-primary');
                 document.getElementById('btn-en').classList.add('btn-secondary');
             } else {
-                contentElement.innerHTML = marked(privacyPolicyEn);
+                contentElement.innerHTML = marked.parse(privacyPolicyEn);
                 document.getElementById('btn-en').classList.remove('btn-secondary');
                 document.getElementById('btn-en').classList.add('btn-primary');
                 document.getElementById('btn-ko').classList.remove('btn-primary');
